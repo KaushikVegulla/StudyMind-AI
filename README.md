@@ -85,12 +85,14 @@ Working: repository structure, FastAPI backend with `/health` (reports persisten
 
 Persistence: a repository layer with two interchangeable backends — in-memory for zero-setup local runs, and Postgres + pgvector for Supabase. Chunks are embedded at ingest when the local model is installed; questions are searched by cosine similarity (`<=>`), with a labelled keyword fallback. The pgvector search was verified on Supabase Postgres 17 with 384-dim vectors (near match similarity 0.994 vs 0.110 unrelated). Backend tests: 11 passing, 1 Postgres round-trip test that runs when `TEST_DATABASE_URL` is set.
 
-Still scaffold-mode: answers are extractive (they quote your notes) until an LLM key is configured. No evaluation numbers are published yet — accuracy / retrieval metrics will be added only when they have actually been measured on real notes.
+LLM layer: Gemini and Groq providers are implemented (plain HTTPS, no SDK, env-swappable) for cited answers and for summary / flashcard / quiz generation, with strict JSON parsing for the generated items and an automatic fallback to the labelled extractive mode if the provider fails or its output does not parse. Covered by mock-transport tests (16 passing). Live verification is pending a free-tier API key — until then, answers run in extractive mode (they quote your notes), exactly as labelled.
+
+No evaluation numbers are published yet — accuracy / retrieval metrics will be added only when they have actually been measured on real notes.
 
 ## Roadmap
 
+- Add a free Gemini or Groq API key and verify the LLM answers live
 - Create the StudyMind Supabase project and point `DATABASE_URL` at it
-- Connect Gemini / Groq for fluent answers, quiz, flashcard, and summary generation
 - Auth (Supabase Auth), then deploy: Render backend + Vercel frontend
 - Optional later: PWA installability from the same website codebase
 
