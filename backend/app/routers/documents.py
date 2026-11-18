@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from .. import store
+from ..repositories import get_repository
+from ..services import embeddings
 from ..services.chunking import chunk_page_text
 from ..services.pdf_parser import extract_pages
 
@@ -11,15 +12,13 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 @router.get("")
 def list_documents(workspace_id: str | None = None):
-    docs = list(store.documents.values())
-    if workspace_id:
-        docs = [d for d in docs if d["workspace_id"] == workspace_id]
-    return docs
+    return get_repository().list_documents(workspace_id)
 
 
 @router.post("/upload", status_code=201)
 async def upload_document(workspace_id: str, file: UploadFile = File(...)):
-    if workspace_id not in store.workspaces:
+    repo = get_repository()
+    if not repo.get_workspace(workspace_id):
         raise HTTPException(404, "Workspace not found")
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF uploads are supported in the MVP")
@@ -28,19 +27,20 @@ async def upload_document(workspace_id: str, file: UploadFile = File(...)):
         pages = extract_pages(data)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    doc_id = store.next_id("doc")
-    total_chunks = 0
+
+    chunks: list[dict] = []
     for page in pages:
-        for chunk in chunk_page_text(page["text"], page["page"]):
-            cid = store.next_id("chunk")
-            store.chunks[cid] = {
-                "id": cid, "document_id": doc_id, "workspace_id": workspace_id,
-                "page": chunk["page"], "index": chunk["index"], "text": chunk["text"],
-            }
-            total_chunks += 1
-    doc = {
-        "id": doc_id, "workspace_id": workspace_id, "filename": file.filename,
-        "pages": len(pages), "chunk_count": total_chunks,
-    }
-    store.documents[doc_id] = doc
-    return doc
+        chunks.extend(chunk_page_text(page["text"], page["page"]))
+
+    # Embed at ingest time when the local model is available, so vector
+    # search can run at question time. Without it, chunks are stored with
+    # no embedding and retrieval falls back to keyword mode (labelled).
+    if chunks and embeddings.embeddings_available():
+        try:
+            vectors = embeddings.embed_texts([c["text"] for c in chunks])
+            for chunk, vector in zip(chunks, vectors):
+                chunk["embedding"] = vector
+        except RuntimeError:
+            pass
+
+    return repo.create_document(workspace_id, file.filename, len(pages), chunks)

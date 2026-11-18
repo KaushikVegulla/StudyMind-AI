@@ -11,13 +11,20 @@ StudyMind is a web app (FastAPI + React), deployed on Render (backend) and Verce
 3. **Ask:** the question is embedded, pgvector returns the top-k nearest chunks, and the LLM (Gemini or Groq free tier, behind `services/llm.py`) must answer using only those chunks and cite document + page for each claim. If retrieval finds nothing relevant, the answer is "not in your material" - never a guess.
 4. **Generate:** summaries, flashcards, and quizzes are generated from the same retrieved chunks, so they stay grounded in the student's own notes.
 
-## Scaffold state
+## Persistence
 
-The scaffold runs with no keys and no database: an in-memory store, keyword-overlap retrieval, and extractive answers that quote the retrieved chunks and return the same citation shape the vector version will. Modes are labelled honestly in API responses (`extractive_scaffold`, `no_match`, later `llm`). Nothing is presented as LLM-generated or measured until it actually is.
+All data access goes through `backend/app/repositories/` — one interface, two backends:
+
+- **Postgres + pgvector** (`postgres.py`) — used when `DATABASE_URL` points at a Supabase Postgres connection string. On first use it applies `supabase/schema.sql` idempotently, embeds chunks at ingest, and searches with the pgvector cosine operator `<=>` (a `match_chunks` SQL function is also in the schema). Verified live: a 384-dim cosine search on Supabase Postgres 17 ranked a near-identical vector at similarity 0.994 vs 0.110 for an unrelated one.
+- **In-memory** (`memory.py`) — used when `DATABASE_URL` is unset, so the app and tests run anywhere with zero setup. It mirrors the same interface, including in-Python cosine search over stored embeddings.
+
+Retrieval mode is labelled in chat responses (`retrieval: vector | keyword`): if the local embedding model is not installed, retrieval falls back to keyword overlap instead of silently pretending to do vector search. Answer modes are likewise labelled (`extractive_scaffold`, `no_match`, later `llm`). Nothing is presented as LLM-generated or measured until it actually is.
+
+To switch on real persistence: create a Supabase project, then set `DATABASE_URL` — no code change. (The project's own tables are never mixed into another app's database.)
 
 ## Components
 
 - `backend/app/routers/` - workspaces, documents, chat, generate
 - `backend/app/services/` - pdf_parser, chunking, embeddings, rag, llm
-- `backend/app/store.py` - in-memory store (scaffold), replaced by Supabase
+- `backend/app/repositories/` - base interface, memory backend, Postgres/pgvector backend
 - `frontend/src/` - sidebar of subject workspaces, chat panel with citation cards, material/generate panel

@@ -12,7 +12,7 @@ import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import store
+from ..repositories import get_repository
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
@@ -23,9 +23,10 @@ class GenerateIn(BaseModel):
 
 
 def _workspace_chunks(workspace_id: str) -> list[dict]:
-    if workspace_id not in store.workspaces:
+    repo = get_repository()
+    if not repo.get_workspace(workspace_id):
         raise HTTPException(404, "Workspace not found")
-    chunks = [c for c in store.chunks.values() if c["workspace_id"] == workspace_id]
+    chunks = repo.list_chunks(workspace_id)
     if not chunks:
         raise HTTPException(400, "No material uploaded in this workspace yet")
     return sorted(chunks, key=lambda c: (c["page"], c["index"]))

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import store
+from ..repositories import get_repository
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -15,20 +15,17 @@ class WorkspaceIn(BaseModel):
 
 @router.get("")
 def list_workspaces():
-    return list(store.workspaces.values())
+    return get_repository().list_workspaces()
 
 
 @router.post("", status_code=201)
 def create_workspace(body: WorkspaceIn):
-    wid = store.next_id("ws")
-    ws = {"id": wid, "name": body.name, "description": body.description}
-    store.workspaces[wid] = ws
-    return ws
+    return get_repository().create_workspace(body.name, body.description)
 
 
 @router.get("/{workspace_id}")
 def get_workspace(workspace_id: str):
-    ws = store.workspaces.get(workspace_id)
+    ws = get_repository().get_workspace(workspace_id)
     if not ws:
         raise HTTPException(404, "Workspace not found")
     return ws
@@ -36,10 +33,5 @@ def get_workspace(workspace_id: str):
 
 @router.delete("/{workspace_id}", status_code=204)
 def delete_workspace(workspace_id: str):
-    if workspace_id not in store.workspaces:
+    if not get_repository().delete_workspace(workspace_id):
         raise HTTPException(404, "Workspace not found")
-    del store.workspaces[workspace_id]
-    for cid in [c for c, ch in store.chunks.items() if ch["workspace_id"] == workspace_id]:
-        del store.chunks[cid]
-    for did in [d for d, doc in store.documents.items() if doc["workspace_id"] == workspace_id]:
-        del store.documents[did]

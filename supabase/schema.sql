@@ -51,6 +51,31 @@ create table if not exists generated_items (
   created_at timestamptz default now()
 );
 
+-- Vector search: nearest chunks to a question embedding, cosine distance.
+-- The backend inlines the same ORDER BY in its repository queries; this
+-- function is provided for SQL-side callers and debugging in the editor.
+create or replace function match_chunks(
+  query_embedding vector(384),
+  match_workspace uuid default null,
+  match_count int default 4
+)
+returns table (
+  id uuid, document_id uuid, workspace_id uuid, filename text,
+  page int, chunk_index int, text text, similarity float
+)
+language sql stable
+as $$
+  select c.id, c.document_id, c.workspace_id, d.filename, c.page,
+         c.chunk_index, c.text,
+         1 - (c.embedding <=> query_embedding) as similarity
+  from chunks c
+  join documents d on d.id = c.document_id
+  where c.embedding is not null
+    and (match_workspace is null or c.workspace_id = match_workspace)
+  order by c.embedding <=> query_embedding
+  limit match_count;
+$$;
+
 alter table workspaces enable row level security;
 alter table documents enable row level security;
 alter table chunks enable row level security;

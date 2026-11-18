@@ -77,18 +77,19 @@ npm run dev
 # app: http://localhost:5173 (proxies /api to the backend)
 ```
 
-Copy `.env.example` to `.env` and fill in values only when you reach the Supabase / LLM steps. The scaffold runs without any keys: workspaces, PDF ingest, chunking, and extractive cited answers work in-memory, and the LLM layer reports itself as not configured instead of faking answers.
+Copy `.env.example` to `.env`. The app runs without any keys: with no `DATABASE_URL` it uses the in-memory repository, and the LLM layer reports itself as not configured instead of faking answers. To use real persistence, set `DATABASE_URL` to a Supabase Postgres connection string — the backend applies `supabase/schema.sql` itself on first run and switches to pgvector storage and search. No code change.
 
 ## Current status
 
-Scaffold: repository structure, FastAPI backend with `/health`, workspace CRUD, PDF upload with per-page parsing and chunking, a retrieval-and-citation chat endpoint (extractive until an LLM key is configured), generation endpoints (summary / flashcards / quiz in extractive scaffold mode), the Supabase pgvector schema, and a React shell with subject sidebar, upload, and chat panels.
+Working: repository structure, FastAPI backend with `/health` (reports persistence backend, embeddings, and LLM state), workspace CRUD, PDF upload with per-page parsing and chunking, a retrieval-and-citation chat endpoint, and generation endpoints (summary / flashcards / quiz in extractive scaffold mode), plus a React shell with subject sidebar, upload, and chat panels.
 
-No evaluation numbers are published yet — accuracy / retrieval metrics will be added only when they have actually been measured on real notes.
+Persistence: a repository layer with two interchangeable backends — in-memory for zero-setup local runs, and Postgres + pgvector for Supabase. Chunks are embedded at ingest when the local model is installed; questions are searched by cosine similarity (`<=>`), with a labelled keyword fallback. The pgvector search was verified on Supabase Postgres 17 with 384-dim vectors (near match similarity 0.994 vs 0.110 unrelated). Backend tests: 11 passing, 1 Postgres round-trip test that runs when `TEST_DATABASE_URL` is set.
+
+Still scaffold-mode: answers are extractive (they quote your notes) until an LLM key is configured. No evaluation numbers are published yet — accuracy / retrieval metrics will be added only when they have actually been measured on real notes.
 
 ## Roadmap
 
-- Persist documents and chunks in Supabase pgvector (schema in `supabase/schema.sql`)
-- Swap in-memory keyword retrieval for pgvector similarity search
+- Create the StudyMind Supabase project and point `DATABASE_URL` at it
 - Connect Gemini / Groq for fluent answers, quiz, flashcard, and summary generation
 - Auth (Supabase Auth), then deploy: Render backend + Vercel frontend
 - Optional later: PWA installability from the same website codebase
