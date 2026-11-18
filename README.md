@@ -85,13 +85,14 @@ Working: repository structure, FastAPI backend with `/health` (reports persisten
 
 Persistence: a repository layer with two interchangeable backends — in-memory for zero-setup local runs, and Postgres + pgvector for Supabase. Chunks are embedded at ingest when the local model is installed; questions are searched by cosine similarity (`<=>`), with a labelled keyword fallback. The pgvector search was verified on Supabase Postgres 17 with 384-dim vectors (near match similarity 0.994 vs 0.110 unrelated). Backend tests: 11 passing, 1 Postgres round-trip test that runs when `TEST_DATABASE_URL` is set.
 
-LLM layer: Gemini and Groq providers are implemented (plain HTTPS, no SDK, env-swappable) for cited answers and for summary / flashcard / quiz generation, with strict JSON parsing for the generated items and an automatic fallback to the labelled extractive mode if the provider fails or its output does not parse. Covered by mock-transport tests (16 passing). Live verification is pending a free-tier API key — until then, answers run in extractive mode (they quote your notes), exactly as labelled.
+LLM layer: Gemini and Groq providers are implemented (plain HTTPS, no SDK, env-swappable) for cited answers and for summary / flashcard / quiz generation, with strict JSON parsing for the generated items and an automatic fallback to the labelled extractive mode if the provider fails or its output does not parse. Covered by mock-transport tests (16 passing).
+
+Verified live on 18 Nov 2026 with a free-tier Gemini key (default model `gemini-3.5-flash`, with `gemini-3.8-flash` and `gemini-flash-latest` as fallbacks): uploading the B-tree test PDF and asking about it returned a Gemini answer in `llm` mode with inline citations like `[dsa-notes.pdf p.1]`, and summary, flashcards, and a 4-option MCQ quiz all returned in `llm` mode. Two honest caveats from that session: older models (`gemini-2.0-flash`, `gemini-2.5-flash`) return 404 for newly created keys, so the defaults target current models; and Gemini's free tier intermittently returns 503 under load — during one spike the chat endpoint fell back to extractive mode exactly as designed, then returned to `llm` mode on the next run.
 
 No evaluation numbers are published yet — accuracy / retrieval metrics will be added only when they have actually been measured on real notes.
 
 ## Roadmap
 
-- Add a free Gemini or Groq API key and verify the LLM answers live
 - Create the StudyMind Supabase project and point `DATABASE_URL` at it
 - Auth (Supabase Auth), then deploy: Render backend + Vercel frontend
 - Optional later: PWA installability from the same website codebase

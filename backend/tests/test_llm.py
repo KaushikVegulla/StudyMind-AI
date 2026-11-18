@@ -35,7 +35,7 @@ def test_no_key_means_no_llm(monkeypatch):
 def test_gemini_answer_parsing(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, **kwargs):
         assert "generativelanguage.googleapis.com" in url
         assert headers["x-goog-api-key"] == "test-key-not-real"
         return FakeResponse({"candidates": [{"content": {
@@ -53,7 +53,7 @@ def test_groq_answer_parsing(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "groq")
     monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, **kwargs):
         assert "api.groq.com" in url
         return FakeResponse({"choices": [{"message": {
             "content": "Groq answer"}}]})
