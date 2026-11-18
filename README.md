@@ -6,6 +6,13 @@ Built by **Vegulla Virendra Kaushik** — BTech CSE (AI & ML), Semester 3, Centu
 
 > **Platform:** StudyMind AI is a **website**, not a native app. Students use it on a laptop with their PDFs open beside it, and a live link is what GitHub reviewers, internship panels, and judges can actually open. A PWA install option may be added later from this same codebase.
 
+## Live demo
+
+- **App:** https://studymind-ai-two.vercel.app
+- **API:** https://studymind-backend-9acr.onrender.com (health at `/health`)
+
+Deployed 18 Nov 2026 - Render free backend + Vercel frontend, CORS wired, seeded workspaces visible on the live page. Two honest labels: the hosted backend currently runs in-memory persistence (uploads reset when the free service restarts) until a Supabase project is connected, and hosted LLM answers activate once `GEMINI_API_KEY` is set in the Render environment - until then the hosted app answers in the labelled extractive mode. The free Render service sleeps when idle, so the first request after a break can take about a minute.
+
 ## Why this project
 
 - **RailX** covers Android/product engineering and **ShieldNet** covers classical ML + cybersecurity. StudyMind is the GenAI / LLM piece: retrieval-augmented generation, embeddings, and vector search.
@@ -93,8 +100,8 @@ No evaluation numbers are published yet — accuracy / retrieval metrics will be
 
 ## Roadmap
 
-- Create the StudyMind Supabase project and point `DATABASE_URL` at it
-- Auth (Supabase Auth), then deploy: Render backend + Vercel frontend
+- Create the StudyMind Supabase project and point `DATABASE_URL` at it (deployment itself is done - see Live demo above)
+- Auth (Supabase Auth): sign-in and private workspaces
 - Optional later: PWA installability from the same website codebase
 
 ## License
