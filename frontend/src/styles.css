@@ -1,0 +1,19 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1420; color: #e8ecf4; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 280px; padding: 24px; background: #151b2c; border-right: 1px solid #26304a; }
+.sidebar h1 { font-size: 22px; margin: 0 0 4px; }
+.tagline { color: #9fb0d0; font-size: 13px; }
+.sidebar ul { list-style: none; padding: 0; }
+.sidebar li button { width: 100%; text-align: left; padding: 10px 12px; margin-bottom: 6px; background: #1c2440; color: #e8ecf4; border: 1px solid #2b3a5f; border-radius: 10px; cursor: pointer; }
+.sidebar li button.active { background: #2f6fed; border-color: #2f6fed; }
+.hint { color: #7e8fb3; font-size: 12px; line-height: 1.5; }
+main { flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.panel { background: #151b2c; border: 1px solid #26304a; border-radius: 14px; padding: 20px; }
+.panel form { display: flex; gap: 10px; }
+.panel input[type="text"], .panel form input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #2b3a5f; background: #0f1420; color: #e8ecf4; }
+button { padding: 10px 16px; border-radius: 10px; border: 0; background: #2f6fed; color: white; cursor: pointer; }
+.row { display: flex; gap: 10px; margin-top: 14px; }
+.citation { background: #0f1420; border-left: 3px solid #2f6fed; padding: 10px 12px; margin-top: 10px; border-radius: 8px; font-size: 13px; }
+.mode { color: #7e8fb3; font-size: 12px; }
+.output { white-space: pre-wrap; font-size: 12px; background: #0f1420; padding: 12px; border-radius: 8px; overflow: auto; }

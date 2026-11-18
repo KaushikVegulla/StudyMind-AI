@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+python-multipart>=0.0.9
+pypdf>=4.2
+python-dotenv>=1.0
+httpx>=0.27
+# Optional, enabled in later steps:
+# sentence-transformers>=3.0   (local embeddings, all-MiniLM-L6-v2)
+# supabase>=2.5                 (pgvector persistence)
