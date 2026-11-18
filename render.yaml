@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: studymind-backend
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: PYTHON_VERSION
+        value: 3.12.3
+    # Set these in the Render dashboard after the first deploy
+    # (Environment tab) - they are deliberately not in this file:
+    #   GEMINI_API_KEY   your free Gemini key from Google AI Studio
+    #   CORS_ORIGINS     the Vercel frontend URL, once it exists
+    #   DATABASE_URL     Supabase connection string, once that project exists
+    # Without them the service still runs: extractive answers, in-memory data.
