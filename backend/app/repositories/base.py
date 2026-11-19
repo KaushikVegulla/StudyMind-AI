@@ -5,7 +5,8 @@ Data shapes are plain dicts, matching the API responses:
 - workspace: {"id", "name", "description"}
 - document:  {"id", "workspace_id", "filename", "pages", "chunk_count"}
 - chunk:     {"id", "document_id", "workspace_id", "filename",
-              "page", "index", "text", "embedding" (list[float] | None)}
+              "page", "index", "text", "section",
+              "embedding" (list[float] | None)}
 """
 from __future__ import annotations
 
@@ -30,7 +31,14 @@ class Repository(Protocol):
     def list_documents(self, workspace_id: str | None = None) -> list[dict]: ...
     def list_chunks(self, workspace_id: str | None = None) -> list[dict]: ...
 
-    # vector search: returns chunk dicts nearest to the query embedding
+    # vector search: returns chunk dicts nearest to the query embedding,
+    # each with a "similarity" score
     def search_by_embedding(self, embedding: list[float],
                             workspace_id: str | None,
                             top_k: int = 4) -> list[dict]: ...
+
+    # keyword search: returns chunk dicts ranked by keyword relevance,
+    # each with a "keyword_score"
+    def search_by_keyword(self, question: str,
+                          workspace_id: str | None,
+                          top_k: int = 20) -> list[dict]: ...

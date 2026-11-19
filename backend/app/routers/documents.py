@@ -18,7 +18,8 @@ def list_documents(workspace_id: str | None = None):
 @router.post("/upload", status_code=201)
 async def upload_document(workspace_id: str, file: UploadFile = File(...)):
     repo = get_repository()
-    if not repo.get_workspace(workspace_id):
+    workspace = repo.get_workspace(workspace_id)
+    if not workspace:
         raise HTTPException(404, "Workspace not found")
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF uploads are supported in the MVP")
@@ -30,14 +31,21 @@ async def upload_document(workspace_id: str, file: UploadFile = File(...)):
 
     chunks: list[dict] = []
     for page in pages:
-        chunks.extend(chunk_page_text(page["text"], page["page"]))
+        chunks.extend(chunk_page_text(
+            page["text"], page["page"],
+            subject=workspace.get("name", ""),
+            document=file.filename or ""))
 
     # Embed at ingest time when the local model is available, so vector
-    # search can run at question time. Without it, chunks are stored with
-    # no embedding and retrieval falls back to keyword mode (labelled).
+    # search can run at question time. The embedded text carries the
+    # Subject > Document > Section context path; the stored chunk text
+    # stays the original wording for exact citations. Without the model,
+    # chunks are stored with no embedding and retrieval falls back to
+    # keyword mode (labelled).
     if chunks and embeddings.embeddings_available():
         try:
-            vectors = embeddings.embed_texts([c["text"] for c in chunks])
+            vectors = embeddings.embed_texts(
+                [c.get("embedding_text") or c["text"] for c in chunks])
             for chunk, vector in zip(chunks, vectors):
                 chunk["embedding"] = vector
         except RuntimeError:
