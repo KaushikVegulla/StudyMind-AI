@@ -19,9 +19,25 @@ Batch 1 pipeline (research report 2026-11-19):
 
 Modes returned: ``hybrid``, ``vector`` or ``keyword``, naming the
 signals that actually contributed. The chat response labels the mode.
+
+Parent-child retrieval: ingestion also stores small child chunks
+linked to each parent chunk (see chunking.py). When enabled
+(``PARENT_CHILD_RETRIEVAL``, default on), the search pools keep only
+child chunks — plus any chunk that has no children, so older or
+flag-off corpora still work. A matched child contributes its parent's
+full text to the prompt as ``context_text``; the citation still names
+the child's document, page and section.
+
+HyDE (hypothetical document embeddings) is opt-in per request and
+off by default: when on, an LLM writes a short hypothetical answer,
+that text is embedded **instead of** the raw question for the vector
+pool (the keyword pool always uses the raw question), and retrieval
+proceeds as usual. Any HyDE failure — no LLM, an error, empty output —
+falls back silently to normal retrieval.
 """
 from __future__ import annotations
 
+import os
 import re
 
 from . import embeddings, rerank
@@ -29,6 +45,25 @@ from . import embeddings, rerank
 RRF_K = 50
 POOL_SIZE = 20
 MIN_SIMILARITY = 0.20
+
+
+def parent_child_enabled() -> bool:
+    """Parent-child retrieval flag (env PARENT_CHILD_RETRIEVAL,
+    default on; "0"/"false"/"no"/"off" disable it)."""
+    value = (os.getenv("PARENT_CHILD_RETRIEVAL") or "on").strip().lower()
+    return value not in ("0", "false", "no", "off")
+
+
+def searchable_only(chunks: list[dict]) -> list[dict]:
+    """Drop parent chunks that have children: the children represent
+    them in search and generation. Chunks without children (older
+    corpora, flag-off ingests) are kept as-is."""
+    parents_with_children = {c.get("parent_id") for c in chunks
+                             if c.get("parent_id")}
+    if not parents_with_children:
+        return list(chunks)
+    return [c for c in chunks
+            if c.get("parent_id") or c.get("id") not in parents_with_children]
 
 _STOPWORDS = {
     "what", "is", "the", "a", "an", "of", "in", "on", "how", "does",
@@ -104,19 +139,59 @@ def _rrf_fuse(pools: list[list[dict]]) -> list[dict]:
     return ordered
 
 
+def _hypothetical_answer(question: str) -> str | None:
+    """HyDE: ask the LLM for a short hypothetical answer to embed.
+    None when no LLM is configured or anything goes wrong — HyDE must
+    never break retrieval."""
+    try:
+        from . import llm
+
+        if llm.configured_provider() is None:
+            return None
+        text = llm.generate_text(
+            "Write a short, factual paragraph that could answer this "
+            "question in a student's course notes. Do not say you are "
+            "guessing; just write the paragraph.\n\n"
+            f"Question: {question}")
+        return text.strip() if text and text.strip() else None
+    except Exception:
+        return None
+
+
 def retrieve(question: str, workspace_id: str | None, repo,
-             top_k: int = 4, pool_size: int = POOL_SIZE) -> tuple[list[dict], str]:
+             top_k: int = 4, pool_size: int = POOL_SIZE,
+             hyde: bool = False) -> tuple[list[dict], str]:
     """Return (chunks, mode). An empty list means: refuse, do not
-    answer. Mode is 'hybrid', 'vector' or 'keyword'."""
+    answer. Mode is 'hybrid', 'vector' or 'keyword'.
+
+    With ``hyde=True`` the vector pool is built from the embedding of
+    a hypothetical answer instead of the raw question (see the module
+    docstring); the keyword pool always uses the raw question."""
     vector_hits: list[dict] = []
     if embeddings.embeddings_available():
         try:
-            query_embedding = embeddings.embed_query(question)
+            query_text = question
+            if hyde:
+                hypothetical = _hypothetical_answer(question)
+                if hypothetical:
+                    query_text = hypothetical
+            query_embedding = embeddings.embed_query(query_text)
             vector_hits = repo.search_by_embedding(
                 query_embedding, workspace_id, top_k=pool_size)
         except RuntimeError:
             vector_hits = []
     keyword_hits = _keyword_ranked(question, workspace_id, repo, pool_size)
+
+    if parent_child_enabled():
+        all_chunks = repo.list_chunks(workspace_id)
+        parents_with_children = {c.get("parent_id") for c in all_chunks
+                                 if c.get("parent_id")}
+        if parents_with_children:
+            def _is_searchable(chunk: dict) -> bool:
+                return bool(chunk.get("parent_id")) or \
+                    chunk.get("id") not in parents_with_children
+            vector_hits = [h for h in vector_hits if _is_searchable(h)]
+            keyword_hits = [h for h in keyword_hits if _is_searchable(h)]
 
     # Refusal threshold: weak vector matches with no keyword support
     # are not evidence. Drop them before fusion.
@@ -141,6 +216,19 @@ def retrieve(question: str, workspace_id: str | None, repo,
     reranked, rerank_mode = rerank.rerank(question, fused, top_k=top_k)
     if rerank_mode == "flashrank":
         mode = f"{mode}+rerank"
+    if parent_child_enabled():
+        # Matched children answer with their parent's full text; the
+        # citation metadata stays the child's (see citation_for).
+        expanded = []
+        for chunk in reranked:
+            chunk = dict(chunk)
+            parent_id = chunk.get("parent_id")
+            if parent_id:
+                parent = repo.get_chunk(parent_id)
+                if parent:
+                    chunk["context_text"] = parent["text"]
+            expanded.append(chunk)
+        reranked = expanded
     return reranked, mode
 
 
@@ -188,7 +276,9 @@ def build_prompt(question: str, chunks: list[dict],
         f"[{c['source_id']}] {c.get('filename', c.get('document_id', 'unknown'))}"
         f" p.{c['page']}"
         + (f" - {c['section']}" if c.get("section") else "")
-        + f": {c['text']}"
+        # Parent-child retrieval: the prompt sees the parent chunk's
+        # full text; the label still names the child's location.
+        + f": {c.get('context_text') or c['text']}"
         for c in chunks
     )
     style_line = _STYLE_INSTRUCTIONS[style]

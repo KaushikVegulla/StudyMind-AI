@@ -5,6 +5,7 @@ import CitationCard from "./CitationCard";
 export default function ChatPanel({ workspaceId }) {
   const [question, setQuestion] = useState("");
   const [style, setStyle] = useState("standard");
+  const [hyde, setHyde] = useState(false);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -12,7 +13,7 @@ export default function ChatPanel({ workspaceId }) {
     e.preventDefault();
     if (!question.trim()) return;
     setBusy(true);
-    try { setResult(await askQuestion(question, workspaceId, style)); }
+    try { setResult(await askQuestion(question, workspaceId, style, hyde)); }
     finally { setBusy(false); }
   }
 
@@ -28,6 +29,10 @@ export default function ChatPanel({ workspaceId }) {
           <option value="standard">Standard</option>
           <option value="exam">Exam</option>
         </select>
+        <label title="HyDE: embed a hypothetical answer instead of the raw question for vector search">
+          <input type="checkbox" checked={hyde}
+                 onChange={(e) => setHyde(e.target.checked)} /> HyDE
+        </label>
         <button disabled={busy}>{busy ? "Searching..." : "Ask"}</button>
       </form>
       {result && (

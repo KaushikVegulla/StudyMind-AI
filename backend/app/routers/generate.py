@@ -21,10 +21,11 @@ with the source chunks. If no item from an LLM response validates,
 generation is retried once; if the retry also fails, the labelled
 extractive scaffold is used.
 
-Flashcards are persisted with SM-2 scheduling state
-(services/srs.py) so they can be reviewed: ``GET
-/generate/flashcards/due`` lists cards whose ``due_at`` has passed and
-``POST /generate/flashcards/review`` records a grade.
+Flashcards are persisted with spaced-repetition scheduling state
+(services/scheduling.py — FSRS by default, SM-2 when SRS_ENGINE=sm2)
+so they can be reviewed: ``GET /generate/flashcards/due`` lists cards
+whose ``due_at`` has passed and ``POST /generate/flashcards/review``
+records a grade.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..repositories import get_repository
-from ..services import llm, quiz_validation, srs
+from ..services import llm, quiz_validation, rag, scheduling
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
@@ -56,7 +57,10 @@ def _chunks_for(body: GenerateIn) -> list[dict]:
     repo = get_repository()
     if not repo.get_workspace(body.workspace_id):
         raise HTTPException(404, "Workspace not found")
-    chunks = repo.list_chunks(body.workspace_id)
+    # Parent chunks that have children are represented by their
+    # children here too, so generation never sees the same passage
+    # twice (parent-child retrieval, services/rag.py).
+    chunks = rag.searchable_only(repo.list_chunks(body.workspace_id))
     if body.document_id:
         if not any(d["id"] == body.document_id
                    for d in repo.list_documents(body.workspace_id)):
@@ -178,7 +182,7 @@ def review_flashcard(body: ReviewIn):
     card = repo.get_flashcard(body.flashcard_id)
     if card is None:
         raise HTTPException(404, "Flashcard not found")
-    state = srs.review(card, body.grade)
+    state = scheduling.apply_review(card, body.grade)
     updated = repo.update_flashcard_review(body.flashcard_id, state)
     return {"flashcard": updated}
 

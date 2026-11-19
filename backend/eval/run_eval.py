@@ -9,6 +9,15 @@ fixture corpus and a golden set of 20 questions, then reports:
 - **Citation correctness** — the top retrieved chunk (the one the
   answer would cite first, [S1]) belongs to the expected document AND
   contains at least one of the question's expected keywords.
+- **Context precision** (offline proxy) — averaged over questions,
+  the share of the retrieved top-5 chunks that come from the expected
+  document. A cheap stand-in for the RAGAS metric of the same name:
+  no LLM judge, just document identity.
+- **Citation coverage** (offline proxy) — the share of questions
+  whose top citation is from the expected document AND contains an
+  expected keyword (the same per-question test as citation
+  correctness, reported under its proxy name). These proxies are NOT
+  RAGAS scores and are labelled as proxies in results.json.
 
 The fixture corpus (fixture_corpus/) is two short sample lecture texts
 written for this harness — one on Data Structures (stacks, queues,
@@ -17,11 +26,13 @@ are therefore fixture-based: they show the pipeline behaving correctly
 on known material, not accuracy on real student notes.
 
 Embeddings: when the app's embedding service is available
-(sentence-transformers + BAAI/bge-small-en-v1.5) it is used for both
-chunks and queries. Otherwise a deterministic hashing bag-of-words
-embedder (same 384 dimensions, L2-normalised) stands in for BOTH sides,
-so retrieval still exercises the full hybrid path offline with no API
-keys; which embedder ran is recorded in results.json.
+(fastembed or sentence-transformers serving BAAI/bge-small-en-v1.5)
+it is used for both chunks and queries. Otherwise a deterministic
+hashing bag-of-words embedder (same 384 dimensions, L2-normalised)
+stands in for BOTH sides, so retrieval still exercises the full
+hybrid path offline with no API keys; which embedder ran is recorded
+in results.json. Set STUDY_MIND_EVAL_OFFLINE=1 to force the fallback
+embedder (CI does this, so CI never downloads a model).
 
 Usage:  python backend/eval/run_eval.py
 Writes: backend/eval/results.json
@@ -31,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import pathlib
 import re
 import sys
@@ -84,9 +96,11 @@ def _load_corpus(repo, workspace_id: str, use_real_embeddings: bool):
 
 
 def main() -> int:
-    use_real = embeddings.embeddings_available()
-    embedder = embeddings.MODEL_NAME if use_real else \
-        "hashing bag-of-words fallback (sentence-transformers not installed)"
+    offline = os.getenv("STUDY_MIND_EVAL_OFFLINE") == "1"
+    use_real = embeddings.embeddings_available() and not offline
+    embedder = (f"{embeddings.MODEL_NAME} via "
+                f"{embeddings.active_embedder_name()}") if use_real else \
+        "hashing bag-of-words fallback (offline)"
     if not use_real:
         _use_fallback_embedder()
 
@@ -98,6 +112,7 @@ def main() -> int:
     rows = []
     recall_hits = 0
     citation_hits = 0
+    precision_total = 0.0
     for item in golden:
         chunks, mode = rag.retrieve(item["question"], ws["id"], repo,
                                     top_k=TOP_K)
@@ -109,14 +124,19 @@ def main() -> int:
             keywords = [k.lower() for k in item["keywords"]]
             citation_ok = top["document_id"] == expected_id and any(
                 k in top["text"].lower() for k in keywords)
+        precision = (sum(1 for c in chunks
+                         if c["document_id"] == expected_id) / len(chunks)
+                     if chunks else 0.0)
         recall_hits += recall
         citation_hits += citation_ok
+        precision_total += precision
         rows.append({
             "question": item["question"],
             "expected_document": item["document"],
             "retrieval_mode": mode,
             "recall_at_5": recall,
             "citation_correct": citation_ok,
+            "context_precision": round(precision, 4),
             "top_document": chunks[0]["filename"] if chunks else None,
         })
 
@@ -128,6 +148,13 @@ def main() -> int:
         "questions": total,
         "recall_at_5": round(recall_hits / total, 4),
         "citation_correctness": round(citation_hits / total, 4),
+        "context_precision": round(precision_total / total, 4),
+        "citation_coverage": round(citation_hits / total, 4),
+        "metrics_note": "context_precision and citation_coverage are "
+                        "offline proxy metrics computed from document "
+                        "identity and expected keywords. They are NOT "
+                        "RAGAS scores (no LLM judge, no faithfulness "
+                        "measurement).",
         "rows": rows,
     }
     (HERE / "results.json").write_text(
@@ -138,6 +165,10 @@ def main() -> int:
           f"{results['recall_at_5']:.2f}")
     print(f"Citation correctness: {citation_hits}/{total} = "
           f"{results['citation_correctness']:.2f}")
+    print(f"Context precision (offline proxy): "
+          f"{results['context_precision']:.2f}")
+    print(f"Citation coverage (offline proxy): "
+          f"{results['citation_coverage']:.2f}")
     for row in rows:
         if not (row["recall_at_5"] and row["citation_correct"]):
             print(f"  miss: {row['question']} "
