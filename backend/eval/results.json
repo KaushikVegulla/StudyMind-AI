@@ -1,0 +1,169 @@
+{
+  "corpus": "fixture_corpus (sample lecture texts written for this harness - fixture-based results, not real notes)",
+  "embedder": "hashing bag-of-words fallback (sentence-transformers not installed)",
+  "questions": 20,
+  "recall_at_5": 1.0,
+  "citation_correctness": 0.9,
+  "rows": [
+    {
+      "question": "What principle does a stack follow?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What does the push operation do in a stack?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "When does stack underflow happen?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What is the time complexity of push and pop operations?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What principle does a queue follow?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": false,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What does enqueue do in a queue?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "How does a circular queue reuse empty spaces?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What is the ordering property of a binary search tree?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What does an inorder traversal of a binary search tree produce?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What are the cases for deletion in a binary search tree?",
+      "expected_document": "data_structures.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": false,
+      "top_document": "data_structures.txt"
+    },
+    {
+      "question": "What is normalization in a database?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What does first normal form require?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What is partial dependency in second normal form?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What does third normal form remove?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What does atomicity mean in ACID?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What does durability guarantee?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "How does isolation affect concurrent transactions?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What is a primary key?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What is a foreign key used for?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    },
+    {
+      "question": "What is a functional dependency?",
+      "expected_document": "database_systems.txt",
+      "retrieval_mode": "hybrid",
+      "recall_at_5": true,
+      "citation_correct": true,
+      "top_document": "database_systems.txt"
+    }
+  ]
+}

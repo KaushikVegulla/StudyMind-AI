@@ -64,6 +64,30 @@ create table if not exists generated_items (
   created_at timestamptz default now()
 );
 
+-- Generation cache keys: one stored payload per document (or per whole
+-- workspace when document_id is null), kind and requested count.
+alter table generated_items
+  add column if not exists document_id uuid
+    references documents(id) on delete cascade;
+alter table generated_items add column if not exists item_count int default 5;
+
+-- Flashcards carry SM-2 spaced-repetition state (backend services/srs.py).
+-- A new card is due immediately: due_at defaults to its creation time.
+create table if not exists flashcards (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces(id) on delete cascade,
+  document_id uuid references documents(id) on delete cascade,
+  front text not null,
+  back text not null,
+  ease_factor double precision not null default 2.5,
+  interval_days int not null default 0,
+  repetitions int not null default 0,
+  due_at timestamptz not null default now(),
+  created_at timestamptz default now()
+);
+create index if not exists flashcards_due_idx
+  on flashcards(workspace_id, due_at);
+
 -- Vector search: nearest chunks to a question embedding, cosine distance.
 -- The backend inlines the same ORDER BY in its repository queries; this
 -- function is provided for SQL-side callers and debugging in the editor.
@@ -94,5 +118,6 @@ alter table documents enable row level security;
 alter table chunks enable row level security;
 alter table messages enable row level security;
 alter table generated_items enable row level security;
+alter table flashcards enable row level security;
 -- NOTE: owner-scoped policies are added with the auth step.
 -- Do not ship permissive policies to production.

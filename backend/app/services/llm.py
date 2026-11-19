@@ -126,10 +126,13 @@ def generate_text(prompt: str) -> str | None:
         return None
 
 
-def generate_answer(question: str, context_chunks: list[dict]) -> str | None:
-    """Answer a question grounded only in the retrieved chunks."""
+def generate_answer(question: str, context_chunks: list[dict],
+                    style: str = "standard") -> str | None:
+    """Answer a question grounded only in the retrieved chunks.
+    ``style`` is one of rag.ANSWER_STYLES and only changes the prompt's
+    style instruction; grounding and citations are unchanged."""
     from .rag import build_prompt
 
     if configured_provider() is None:
         return None
-    return generate_text(build_prompt(question, context_chunks))
+    return generate_text(build_prompt(question, context_chunks, style=style))

@@ -4,6 +4,7 @@ import CitationCard from "./CitationCard";
 
 export default function ChatPanel({ workspaceId }) {
   const [question, setQuestion] = useState("");
+  const [style, setStyle] = useState("standard");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -11,7 +12,7 @@ export default function ChatPanel({ workspaceId }) {
     e.preventDefault();
     if (!question.trim()) return;
     setBusy(true);
-    try { setResult(await askQuestion(question, workspaceId)); }
+    try { setResult(await askQuestion(question, workspaceId, style)); }
     finally { setBusy(false); }
   }
 
@@ -21,6 +22,12 @@ export default function ChatPanel({ workspaceId }) {
       <form onSubmit={submit}>
         <input value={question} onChange={(e) => setQuestion(e.target.value)}
                placeholder="e.g. What is a B-tree and when is it used?" />
+        <select value={style} onChange={(e) => setStyle(e.target.value)}
+                title="Answer style">
+          <option value="concise">Concise</option>
+          <option value="standard">Standard</option>
+          <option value="exam">Exam</option>
+        </select>
         <button disabled={busy}>{busy ? "Searching..." : "Ask"}</button>
       </form>
       {result && (

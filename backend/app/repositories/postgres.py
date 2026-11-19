@@ -229,3 +229,110 @@ class PostgresRepository:
                 row["keyword_score"] = float(row.get("keyword_score") or 0.0)
                 rows.append(row)
             return rows
+
+    # -- flashcards ------------------------------------------------------
+    @staticmethod
+    def _flashcard_row(row: dict) -> dict:
+        card = dict(row)
+        if card.get("due_at") is not None \
+                and not isinstance(card["due_at"], str):
+            card["due_at"] = card["due_at"].isoformat()
+        card["ease_factor"] = float(card["ease_factor"])
+        return card
+
+    def save_flashcards(self, workspace_id: str,
+                        document_id: str | None,
+                        cards: list[dict]) -> list[dict]:
+        from ..services.srs import new_card_state
+
+        saved = []
+        with self._conn.cursor() as cur:
+            for card in cards:
+                state = new_card_state()
+                cur.execute(
+                    "insert into flashcards (workspace_id, document_id, "
+                    "front, back, ease_factor, interval_days, repetitions, "
+                    "due_at) values (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "returning id::text, workspace_id::text, "
+                    "document_id::text, front, back, ease_factor, "
+                    "interval_days, repetitions, due_at",
+                    (workspace_id, document_id, card["front"], card["back"],
+                     state["ease_factor"], state["interval_days"],
+                     state["repetitions"], state["due_at"]),
+                )
+                saved.append(self._flashcard_row(cur.fetchone()))
+        return saved
+
+    def list_due_flashcards(self, workspace_id: str | None = None,
+                            document_id: str | None = None,
+                            now: str | None = None) -> list[dict]:
+        from ..services.srs import now_utc
+
+        cutoff = now or now_utc().isoformat()
+        sql = ("select id::text, workspace_id::text, document_id::text, "
+               "front, back, ease_factor, interval_days, repetitions, "
+               "due_at from flashcards where due_at <= %s")
+        params: list = [cutoff]
+        if workspace_id:
+            sql += " and workspace_id = %s"
+            params.append(workspace_id)
+        if document_id:
+            sql += " and document_id = %s"
+            params.append(document_id)
+        sql += " order by due_at"
+        with self._conn.cursor() as cur:
+            cur.execute(sql, params)
+            return [self._flashcard_row(r) for r in cur.fetchall()]
+
+    def get_flashcard(self, flashcard_id: str) -> dict | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select id::text, workspace_id::text, document_id::text, "
+                "front, back, ease_factor, interval_days, repetitions, "
+                "due_at from flashcards where id = %s", (flashcard_id,))
+            row = cur.fetchone()
+            return self._flashcard_row(row) if row else None
+
+    def update_flashcard_review(self, flashcard_id: str,
+                                state: dict) -> dict | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "update flashcards set ease_factor = %s, "
+                "interval_days = %s, repetitions = %s, due_at = %s "
+                "where id = %s returning id::text, workspace_id::text, "
+                "document_id::text, front, back, ease_factor, "
+                "interval_days, repetitions, due_at",
+                (state["ease_factor"], state["interval_days"],
+                 state["repetitions"], state["due_at"], flashcard_id),
+            )
+            row = cur.fetchone()
+            return self._flashcard_row(row) if row else None
+
+    # -- generation cache --------------------------------------------------
+    def get_generated(self, workspace_id: str, document_id: str | None,
+                      kind: str, count: int) -> dict | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "select content from generated_items where "
+                "workspace_id = %s and document_id is not distinct from %s "
+                "and kind = %s and item_count = %s",
+                (workspace_id, document_id, kind, count),
+            )
+            row = cur.fetchone()
+            return dict(row["content"]) if row else None
+
+    def save_generated(self, workspace_id: str, document_id: str | None,
+                       kind: str, count: int, payload: dict) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "delete from generated_items where workspace_id = %s and "
+                "document_id is not distinct from %s and kind = %s and "
+                "item_count = %s",
+                (workspace_id, document_id, kind, count),
+            )
+            cur.execute(
+                "insert into generated_items (workspace_id, document_id, "
+                "kind, item_count, content) values (%s, %s, %s, %s, %s)",
+                (workspace_id, document_id, kind, count,
+                 json.dumps(payload)),
+            )

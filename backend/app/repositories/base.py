@@ -7,6 +7,11 @@ Data shapes are plain dicts, matching the API responses:
 - chunk:     {"id", "document_id", "workspace_id", "filename",
               "page", "index", "text", "section",
               "embedding" (list[float] | None)}
+- flashcard: {"id", "workspace_id", "document_id", "front", "back",
+              "ease_factor", "interval_days", "repetitions", "due_at"}
+- generated: cached summary/flashcards/quiz payloads, keyed by
+  workspace + document + kind + count (see the generation cache
+  methods below)
 """
 from __future__ import annotations
 
@@ -42,3 +47,21 @@ class Repository(Protocol):
     def search_by_keyword(self, question: str,
                           workspace_id: str | None,
                           top_k: int = 20) -> list[dict]: ...
+
+    # flashcards with SM-2 scheduling state (services/srs.py)
+    def save_flashcards(self, workspace_id: str,
+                        document_id: str | None,
+                        cards: list[dict]) -> list[dict]: ...
+    def list_due_flashcards(self, workspace_id: str | None = None,
+                            document_id: str | None = None,
+                            now: str | None = None) -> list[dict]: ...
+    def get_flashcard(self, flashcard_id: str) -> dict | None: ...
+    def update_flashcard_review(self, flashcard_id: str,
+                                state: dict) -> dict | None: ...
+
+    # generation cache: one stored payload per
+    # (workspace, document, kind, count); None document = whole workspace
+    def get_generated(self, workspace_id: str, document_id: str | None,
+                      kind: str, count: int) -> dict | None: ...
+    def save_generated(self, workspace_id: str, document_id: str | None,
+                       kind: str, count: int, payload: dict) -> None: ...

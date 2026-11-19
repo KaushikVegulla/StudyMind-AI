@@ -6,11 +6,25 @@ export async function getWorkspaces() {
   return r.json();
 }
 
-export async function askQuestion(question, workspaceId) {
+export async function askQuestion(question, workspaceId, style = "standard") {
   const r = await fetch(`${API}/api/chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, workspace_id: workspaceId }),
+    body: JSON.stringify({ question, workspace_id: workspaceId, style }),
+  });
+  return r.json();
+}
+
+export async function getDueFlashcards(workspaceId) {
+  const r = await fetch(`${API}/api/generate/flashcards/due?workspace_id=${workspaceId}`);
+  return r.json();
+}
+
+export async function reviewFlashcard(flashcardId, grade) {
+  const r = await fetch(`${API}/api/generate/flashcards/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flashcard_id: flashcardId, grade }),
   });
   return r.json();
 }

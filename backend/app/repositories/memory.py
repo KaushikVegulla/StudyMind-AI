@@ -22,6 +22,8 @@ class MemoryRepository:
         self.workspaces: dict[str, dict] = {}
         self.documents: dict[str, dict] = {}
         self.chunks: dict[str, dict] = {}
+        self.flashcards: dict[str, dict] = {}
+        self.generated: dict[tuple, dict] = {}
 
     def _next_id(self, prefix: str) -> str:
         return f"{prefix}_{next(self._ids)}"
@@ -63,6 +65,10 @@ class MemoryRepository:
                        if ch["workspace_id"] != workspace_id}
         self.documents = {d: doc for d, doc in self.documents.items()
                           if doc["workspace_id"] != workspace_id}
+        self.flashcards = {f: card for f, card in self.flashcards.items()
+                           if card["workspace_id"] != workspace_id}
+        self.generated = {k: v for k, v in self.generated.items()
+                          if k[0] != workspace_id}
         return True
 
     # -- documents and chunks ----------------------------------------------
@@ -124,3 +130,56 @@ class MemoryRepository:
                 hits.append(chunk)
         hits.sort(key=lambda c: c["keyword_score"], reverse=True)
         return hits[:top_k]
+
+    # -- flashcards ------------------------------------------------------
+    def save_flashcards(self, workspace_id: str,
+                        document_id: str | None,
+                        cards: list[dict]) -> list[dict]:
+        from ..services.srs import new_card_state
+
+        saved = []
+        for card in cards:
+            fid = self._next_id("card")
+            record = {"id": fid, "workspace_id": workspace_id,
+                      "document_id": document_id,
+                      "front": card["front"], "back": card["back"],
+                      **new_card_state()}
+            self.flashcards[fid] = record
+            saved.append(dict(record))
+        return saved
+
+    def list_due_flashcards(self, workspace_id: str | None = None,
+                            document_id: str | None = None,
+                            now: str | None = None) -> list[dict]:
+        from ..services.srs import now_utc
+
+        cutoff = now or now_utc().isoformat()
+        due = [dict(c) for c in self.flashcards.values()
+               if c["due_at"] <= cutoff
+               and (workspace_id is None or c["workspace_id"] == workspace_id)
+               and (document_id is None or c["document_id"] == document_id)]
+        due.sort(key=lambda c: c["due_at"])
+        return due
+
+    def get_flashcard(self, flashcard_id: str) -> dict | None:
+        card = self.flashcards.get(flashcard_id)
+        return dict(card) if card else None
+
+    def update_flashcard_review(self, flashcard_id: str,
+                                state: dict) -> dict | None:
+        card = self.flashcards.get(flashcard_id)
+        if card is None:
+            return None
+        card.update({k: state[k] for k in
+                     ("ease_factor", "interval_days", "repetitions", "due_at")})
+        return dict(card)
+
+    # -- generation cache --------------------------------------------------
+    def get_generated(self, workspace_id: str, document_id: str | None,
+                      kind: str, count: int) -> dict | None:
+        payload = self.generated.get((workspace_id, document_id, kind, count))
+        return dict(payload) if payload else None
+
+    def save_generated(self, workspace_id: str, document_id: str | None,
+                       kind: str, count: int, payload: dict) -> None:
+        self.generated[(workspace_id, document_id, kind, count)] = dict(payload)
