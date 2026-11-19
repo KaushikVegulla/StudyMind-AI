@@ -26,6 +26,10 @@ def ask(body: AskIn):
             "citations": [], "mode": "no_match",
             "retrieval": retrieval_mode,
         }
+    # Source labels [S1], [S2] are assigned here by code, in the same
+    # order the prompt shows them, so the citations returned to the
+    # client always match the labels the model was told to cite.
+    chunks = rag.assign_source_ids(chunks)
     citations = [rag.citation_for(c) for c in chunks]
     answer = llm.generate_answer(body.question, chunks)
     if answer:

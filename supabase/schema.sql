@@ -1,5 +1,8 @@
 -- StudyMind AI - Supabase Postgres + pgvector schema
--- Run in the Supabase SQL editor. Embeddings: all-MiniLM-L6-v2, 384 dims.
+-- Run in the Supabase SQL editor. Embeddings: BAAI/bge-small-en-v1.5, 384 dims.
+-- NOTE: chunks embedded with the old all-MiniLM-L6-v2 model must be
+-- re-embedded (re-upload) after this change - the vector space differs
+-- even though the dimension is the same.
 create extension if not exists vector;
 
 create table if not exists workspaces (
@@ -25,13 +28,23 @@ create table if not exists chunks (
   page int not null,
   chunk_index int not null,
   text text not null,
+  section text default '',
   embedding vector(384),
   created_at timestamptz default now()
 );
 
-create index if not exists chunks_embedding_idx
-  on chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+-- For projects created before the section column existed.
+alter table chunks add column if not exists section text default '';
+
+-- HNSW over IVFFlat: better recall at this scale, no training step.
+drop index if exists chunks_embedding_idx;
+create index if not exists chunks_embedding_hnsw_idx
+  on chunks using hnsw (embedding vector_cosine_ops)
+  with (m = 16, ef_construction = 64);
 create index if not exists chunks_workspace_idx on chunks(workspace_id);
+-- Full-text index for the keyword half of hybrid search.
+create index if not exists chunks_text_fts_idx
+  on chunks using gin (to_tsvector('english', text));
 
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),

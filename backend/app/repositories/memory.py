@@ -75,6 +75,7 @@ class MemoryRepository:
                 "id": cid, "document_id": doc_id, "workspace_id": workspace_id,
                 "filename": filename, "page": chunk["page"],
                 "index": chunk["index"], "text": chunk["text"],
+                "section": chunk.get("section", ""),
                 "embedding": chunk.get("embedding"),
             }
         doc = {"id": doc_id, "workspace_id": workspace_id, "filename": filename,
@@ -98,8 +99,28 @@ class MemoryRepository:
     def search_by_embedding(self, embedding: list[float],
                             workspace_id: str | None,
                             top_k: int = 4) -> list[dict]:
-        candidates = [c for c in self.list_chunks(workspace_id)
+        candidates = [dict(c) for c in self.list_chunks(workspace_id)
                       if c.get("embedding")]
-        candidates.sort(key=lambda c: _cosine(embedding, c["embedding"]),
-                        reverse=True)
+        for chunk in candidates:
+            chunk["similarity"] = _cosine(embedding, chunk["embedding"])
+        candidates.sort(key=lambda c: c["similarity"], reverse=True)
         return candidates[:top_k]
+
+    # -- keyword search --------------------------------------------------------
+    def search_by_keyword(self, question: str,
+                          workspace_id: str | None,
+                          top_k: int = 20) -> list[dict]:
+        import re
+
+        from ..services.rag import _terms, keyword_score
+
+        terms = _terms(question)
+        hits = []
+        for chunk in self.list_chunks(workspace_id):
+            score = keyword_score(terms, chunk["text"])
+            if score > 0:
+                chunk = dict(chunk)
+                chunk["keyword_score"] = score
+                hits.append(chunk)
+        hits.sort(key=lambda c: c["keyword_score"], reverse=True)
+        return hits[:top_k]

@@ -104,10 +104,11 @@ class PostgresRepository:
             for chunk in chunks:
                 cur.execute(
                     "insert into chunks (document_id, workspace_id, page, "
-                    "chunk_index, text, embedding) values "
-                    "(%s, %s, %s, %s, %s, %s::vector)",
+                    "chunk_index, text, section, embedding) values "
+                    "(%s, %s, %s, %s, %s, %s, %s::vector)",
                     (doc_id, workspace_id, chunk["page"], chunk["index"],
-                     chunk["text"], _vector_literal(chunk.get("embedding"))),
+                     chunk["text"], chunk.get("section", ""),
+                     _vector_literal(chunk.get("embedding"))),
                 )
         return {"id": doc_id, "workspace_id": workspace_id,
                 "filename": filename, "pages": pages,
@@ -135,6 +136,7 @@ class PostgresRepository:
             base = ("select c.id::text, c.document_id::text, "
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
+                    "coalesce(c.section, '') as section, "
                     "c.embedding::text as embedding "
                     "from chunks c join documents d on d.id = c.document_id ")
             if workspace_id:
@@ -163,6 +165,7 @@ class PostgresRepository:
                     "select c.id::text, c.document_id::text, "
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
+                    "coalesce(c.section, '') as section, "
                     "1 - (c.embedding <=> %s::vector) as similarity "
                     "from chunks c join documents d on d.id = c.document_id "
                     "where c.workspace_id = %s and c.embedding is not null "
@@ -174,6 +177,7 @@ class PostgresRepository:
                     "select c.id::text, c.document_id::text, "
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
+                    "coalesce(c.section, '') as section, "
                     "1 - (c.embedding <=> %s::vector) as similarity "
                     "from chunks c join documents d on d.id = c.document_id "
                     "where c.embedding is not null "
@@ -181,3 +185,47 @@ class PostgresRepository:
                     (literal, literal, top_k),
                 )
             return [dict(r) for r in cur.fetchall()]
+
+    # -- keyword search ----------------------------------------------------
+    def search_by_keyword(self, question: str,
+                          workspace_id: str | None,
+                          top_k: int = 20) -> list[dict]:
+        """Full-text ranking with tsvector and ts_rank. The GIN index in
+        supabase/schema.sql makes this fast. Used as the keyword pool
+        for hybrid RRF fusion in services/rag.py."""
+        with self._conn.cursor() as cur:
+            if workspace_id:
+                cur.execute(
+                    "select c.id::text, c.document_id::text, "
+                    "c.workspace_id::text, d.filename, c.page, "
+                    "c.chunk_index as index, c.text, "
+                    "coalesce(c.section, '') as section, "
+                    "ts_rank(to_tsvector('english', c.text), "
+                    "plainto_tsquery('english', %s)) as keyword_score "
+                    "from chunks c join documents d on d.id = c.document_id "
+                    "where c.workspace_id = %s and "
+                    "to_tsvector('english', c.text) @@ "
+                    "plainto_tsquery('english', %s) "
+                    "order by keyword_score desc limit %s",
+                    (question, workspace_id, question, top_k),
+                )
+            else:
+                cur.execute(
+                    "select c.id::text, c.document_id::text, "
+                    "c.workspace_id::text, d.filename, c.page, "
+                    "c.chunk_index as index, c.text, "
+                    "coalesce(c.section, '') as section, "
+                    "ts_rank(to_tsvector('english', c.text), "
+                    "plainto_tsquery('english', %s)) as keyword_score "
+                    "from chunks c join documents d on d.id = c.document_id "
+                    "where to_tsvector('english', c.text) @@ "
+                    "plainto_tsquery('english', %s) "
+                    "order by keyword_score desc limit %s",
+                    (question, question, top_k),
+                )
+            rows = []
+            for r in cur.fetchall():
+                row = dict(r)
+                row["keyword_score"] = float(row.get("keyword_score") or 0.0)
+                rows.append(row)
+            return rows
