@@ -1,9 +1,12 @@
 {
   "corpus": "fixture_corpus (sample lecture texts written for this harness - fixture-based results, not real notes)",
-  "embedder": "hashing bag-of-words fallback (sentence-transformers not installed)",
+  "embedder": "hashing bag-of-words fallback (offline)",
   "questions": 20,
   "recall_at_5": 1.0,
   "citation_correctness": 0.9,
+  "context_precision": 0.68,
+  "citation_coverage": 0.9,
+  "metrics_note": "context_precision and citation_coverage are offline proxy metrics computed from document identity and expected keywords. They are NOT RAGAS scores (no LLM judge, no faithfulness measurement).",
   "rows": [
     {
       "question": "What principle does a stack follow?",
@@ -11,6 +14,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.6,
       "top_document": "data_structures.txt"
     },
     {
@@ -19,6 +23,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.6,
       "top_document": "data_structures.txt"
     },
     {
@@ -27,6 +32,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.4,
       "top_document": "data_structures.txt"
     },
     {
@@ -35,6 +41,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "data_structures.txt"
     },
     {
@@ -43,6 +50,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": false,
+      "context_precision": 0.6,
       "top_document": "database_systems.txt"
     },
     {
@@ -51,6 +59,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.2,
       "top_document": "data_structures.txt"
     },
     {
@@ -59,6 +68,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "data_structures.txt"
     },
     {
@@ -67,6 +77,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "data_structures.txt"
     },
     {
@@ -75,6 +86,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.6,
       "top_document": "data_structures.txt"
     },
     {
@@ -83,6 +95,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": false,
+      "context_precision": 0.8,
       "top_document": "data_structures.txt"
     },
     {
@@ -91,6 +104,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 1.0,
       "top_document": "database_systems.txt"
     },
     {
@@ -99,6 +113,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.6,
       "top_document": "database_systems.txt"
     },
     {
@@ -107,6 +122,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "database_systems.txt"
     },
     {
@@ -115,6 +131,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "database_systems.txt"
     },
     {
@@ -123,6 +140,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "database_systems.txt"
     },
     {
@@ -131,6 +149,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 1.0,
       "top_document": "database_systems.txt"
     },
     {
@@ -139,6 +158,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.4,
       "top_document": "database_systems.txt"
     },
     {
@@ -147,6 +167,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "database_systems.txt"
     },
     {
@@ -155,6 +176,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.4,
       "top_document": "database_systems.txt"
     },
     {
@@ -163,6 +185,7 @@
       "retrieval_mode": "hybrid",
       "recall_at_5": true,
       "citation_correct": true,
+      "context_precision": 0.8,
       "top_document": "database_systems.txt"
     }
   ]

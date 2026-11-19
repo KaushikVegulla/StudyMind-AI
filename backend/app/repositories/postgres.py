@@ -34,8 +34,16 @@ class PostgresRepository:
             raise RuntimeError(
                 "psycopg is not installed - see backend/requirements.txt"
             ) from exc
+        # prepare_threshold=None disables psycopg prepared statements.
+        # Through Supabase's transaction pooler (port 6543) the server
+        # connection behind ours is recycled between transactions, so
+        # a prepared statement name can already exist on the "new"
+        # connection: the first /health after a deploy failed with
+        # psycopg.errors.DuplicatePreparedStatement in counts().
+        # Prepared statements buy nothing at this app's query rate.
         self._conn = psycopg.connect(database_url, row_factory=dict_row,
-                                     autocommit=True)
+                                     autocommit=True,
+                                     prepare_threshold=None)
         self.ensure_schema()
 
     # -- schema --------------------------------------------------------------
@@ -93,50 +101,80 @@ class PostgresRepository:
 
     # -- documents and chunks ----------------------------------------------------
     def create_document(self, workspace_id: str, filename: str, pages: int,
-                        chunks: list[dict]) -> dict:
+                        chunks: list[dict], extractor: str = "pypdf",
+                        pages_needing_ocr: int = 0) -> dict:
         with self._conn.cursor() as cur:
             cur.execute(
-                "insert into documents (workspace_id, filename, pages) "
-                "values (%s, %s, %s) returning id::text",
-                (workspace_id, filename, pages),
+                "insert into documents (workspace_id, filename, pages, "
+                "extractor, pages_needing_ocr) "
+                "values (%s, %s, %s, %s, %s) returning id::text",
+                (workspace_id, filename, pages, extractor,
+                 pages_needing_ocr),
             )
             doc_id = cur.fetchone()["id"]
-            for chunk in chunks:
+            # Parents first: child chunks link to the parent row id
+            # created in this same call (parent-child retrieval).
+            ref_to_id: dict[str, str] = {}
+            ordered = sorted(chunks,
+                               key=lambda c: bool(c.get("parent_ref")))
+            for chunk in ordered:
+                parent_id = None
+                if chunk.get("parent_ref"):
+                    parent_id = ref_to_id.get(chunk["parent_ref"])
                 cur.execute(
                     "insert into chunks (document_id, workspace_id, page, "
-                    "chunk_index, text, section, embedding) values "
-                    "(%s, %s, %s, %s, %s, %s, %s::vector)",
+                    "chunk_index, text, section, embedding, parent_id) "
+                    "values (%s, %s, %s, %s, %s, %s, %s::vector, %s) "
+                    "returning id::text",
                     (doc_id, workspace_id, chunk["page"], chunk["index"],
                      chunk["text"], chunk.get("section", ""),
-                     _vector_literal(chunk.get("embedding"))),
+                     _vector_literal(chunk.get("embedding")), parent_id),
                 )
+                if chunk.get("ref"):
+                    ref_to_id[chunk["ref"]] = cur.fetchone()["id"]
         return {"id": doc_id, "workspace_id": workspace_id,
                 "filename": filename, "pages": pages,
-                "chunk_count": len(chunks)}
+                "chunk_count": len(chunks), "extractor": extractor,
+                "pages_needing_ocr": pages_needing_ocr}
 
     def list_documents(self, workspace_id: str | None = None) -> list[dict]:
         with self._conn.cursor() as cur:
             if workspace_id:
                 cur.execute(
                     "select d.id::text, d.workspace_id::text, d.filename, "
-                    "d.pages, (select count(*) from chunks c "
+                    "d.pages, coalesce(d.extractor, 'pypdf') as extractor, "
+                    "coalesce(d.pages_needing_ocr, 0) as "
+                    "pages_needing_ocr, (select count(*) from chunks c "
                     "where c.document_id = d.id) as chunk_count "
                     "from documents d where d.workspace_id = %s "
                     "order by d.created_at", (workspace_id,))
             else:
                 cur.execute(
                     "select d.id::text, d.workspace_id::text, d.filename, "
-                    "d.pages, (select count(*) from chunks c "
+                    "d.pages, coalesce(d.extractor, 'pypdf') as extractor, "
+                    "coalesce(d.pages_needing_ocr, 0) as "
+                    "pages_needing_ocr, (select count(*) from chunks c "
                     "where c.document_id = d.id) as chunk_count "
                     "from documents d order by d.created_at")
             return [dict(r) for r in cur.fetchall()]
 
+    _CHUNK_COLUMNS = ("c.id::text, c.document_id::text, "
+                      "c.workspace_id::text, d.filename, c.page, "
+                      "c.chunk_index as index, c.text, "
+                      "coalesce(c.section, '') as section, "
+                      "c.parent_id::text as parent_id")
+
+    @staticmethod
+    def _chunk_row(row: dict) -> dict:
+        row = dict(row)
+        emb = row.get("embedding")
+        if isinstance(emb, str):
+            row["embedding"] = json.loads(emb)
+        return row
+
     def list_chunks(self, workspace_id: str | None = None) -> list[dict]:
         with self._conn.cursor() as cur:
-            base = ("select c.id::text, c.document_id::text, "
-                    "c.workspace_id::text, d.filename, c.page, "
-                    "c.chunk_index as index, c.text, "
-                    "coalesce(c.section, '') as section, "
+            base = (f"select {self._CHUNK_COLUMNS}, "
                     "c.embedding::text as embedding "
                     "from chunks c join documents d on d.id = c.document_id ")
             if workspace_id:
@@ -145,14 +183,17 @@ class PostgresRepository:
                             (workspace_id,))
             else:
                 cur.execute(base + "order by c.page, c.chunk_index")
-            rows = []
-            for r in cur.fetchall():
-                row = dict(r)
-                emb = row.get("embedding")
-                row["embedding"] = (json.loads(emb) if isinstance(emb, str)
-                                    else emb)
-                rows.append(row)
-            return rows
+            return [self._chunk_row(r) for r in cur.fetchall()]
+
+    def get_chunk(self, chunk_id: str) -> dict | None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                f"select {self._CHUNK_COLUMNS}, "
+                "c.embedding::text as embedding "
+                "from chunks c join documents d on d.id = c.document_id "
+                "where c.id = %s", (chunk_id,))
+            row = cur.fetchone()
+            return self._chunk_row(row) if row else None
 
     # -- vector search -------------------------------------------------------------
     def search_by_embedding(self, embedding: list[float],
@@ -166,6 +207,7 @@ class PostgresRepository:
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
                     "coalesce(c.section, '') as section, "
+                    "c.parent_id::text as parent_id, "
                     "1 - (c.embedding <=> %s::vector) as similarity "
                     "from chunks c join documents d on d.id = c.document_id "
                     "where c.workspace_id = %s and c.embedding is not null "
@@ -178,6 +220,7 @@ class PostgresRepository:
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
                     "coalesce(c.section, '') as section, "
+                    "c.parent_id::text as parent_id, "
                     "1 - (c.embedding <=> %s::vector) as similarity "
                     "from chunks c join documents d on d.id = c.document_id "
                     "where c.embedding is not null "
@@ -200,6 +243,7 @@ class PostgresRepository:
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
                     "coalesce(c.section, '') as section, "
+                    "c.parent_id::text as parent_id, "
                     "ts_rank(to_tsvector('english', c.text), "
                     "plainto_tsquery('english', %s)) as keyword_score "
                     "from chunks c join documents d on d.id = c.document_id "
@@ -215,6 +259,7 @@ class PostgresRepository:
                     "c.workspace_id::text, d.filename, c.page, "
                     "c.chunk_index as index, c.text, "
                     "coalesce(c.section, '') as section, "
+                    "c.parent_id::text as parent_id, "
                     "ts_rank(to_tsvector('english', c.text), "
                     "plainto_tsquery('english', %s)) as keyword_score "
                     "from chunks c join documents d on d.id = c.document_id "
@@ -231,19 +276,28 @@ class PostgresRepository:
             return rows
 
     # -- flashcards ------------------------------------------------------
+    _FLASHCARD_COLUMNS = (
+        "id::text, workspace_id::text, document_id::text, front, back, "
+        "ease_factor, interval_days, repetitions, due_at, "
+        "fsrs_stability, fsrs_difficulty, last_review_at")
+
     @staticmethod
     def _flashcard_row(row: dict) -> dict:
         card = dict(row)
-        if card.get("due_at") is not None \
-                and not isinstance(card["due_at"], str):
-            card["due_at"] = card["due_at"].isoformat()
+        for field in ("due_at", "last_review_at"):
+            value = card.get(field)
+            if value is not None and not isinstance(value, str):
+                card[field] = value.isoformat()
         card["ease_factor"] = float(card["ease_factor"])
+        for field in ("fsrs_stability", "fsrs_difficulty"):
+            if card.get(field) is not None:
+                card[field] = float(card[field])
         return card
 
     def save_flashcards(self, workspace_id: str,
                         document_id: str | None,
                         cards: list[dict]) -> list[dict]:
-        from ..services.srs import new_card_state
+        from ..services.scheduling import new_card_state
 
         saved = []
         with self._conn.cursor() as cur:
@@ -253,9 +307,7 @@ class PostgresRepository:
                     "insert into flashcards (workspace_id, document_id, "
                     "front, back, ease_factor, interval_days, repetitions, "
                     "due_at) values (%s, %s, %s, %s, %s, %s, %s, %s) "
-                    "returning id::text, workspace_id::text, "
-                    "document_id::text, front, back, ease_factor, "
-                    "interval_days, repetitions, due_at",
+                    f"returning {self._FLASHCARD_COLUMNS}",
                     (workspace_id, document_id, card["front"], card["back"],
                      state["ease_factor"], state["interval_days"],
                      state["repetitions"], state["due_at"]),
@@ -269,9 +321,8 @@ class PostgresRepository:
         from ..services.srs import now_utc
 
         cutoff = now or now_utc().isoformat()
-        sql = ("select id::text, workspace_id::text, document_id::text, "
-               "front, back, ease_factor, interval_days, repetitions, "
-               "due_at from flashcards where due_at <= %s")
+        sql = (f"select {self._FLASHCARD_COLUMNS} from flashcards "
+               "where due_at <= %s")
         params: list = [cutoff]
         if workspace_id:
             sql += " and workspace_id = %s"
@@ -287,9 +338,8 @@ class PostgresRepository:
     def get_flashcard(self, flashcard_id: str) -> dict | None:
         with self._conn.cursor() as cur:
             cur.execute(
-                "select id::text, workspace_id::text, document_id::text, "
-                "front, back, ease_factor, interval_days, repetitions, "
-                "due_at from flashcards where id = %s", (flashcard_id,))
+                f"select {self._FLASHCARD_COLUMNS} from flashcards "
+                "where id = %s", (flashcard_id,))
             row = cur.fetchone()
             return self._flashcard_row(row) if row else None
 
@@ -298,12 +348,14 @@ class PostgresRepository:
         with self._conn.cursor() as cur:
             cur.execute(
                 "update flashcards set ease_factor = %s, "
-                "interval_days = %s, repetitions = %s, due_at = %s "
-                "where id = %s returning id::text, workspace_id::text, "
-                "document_id::text, front, back, ease_factor, "
-                "interval_days, repetitions, due_at",
+                "interval_days = %s, repetitions = %s, due_at = %s, "
+                "fsrs_stability = %s, fsrs_difficulty = %s, "
+                "last_review_at = %s "
+                f"where id = %s returning {self._FLASHCARD_COLUMNS}",
                 (state["ease_factor"], state["interval_days"],
-                 state["repetitions"], state["due_at"], flashcard_id),
+                 state["repetitions"], state["due_at"],
+                 state.get("fsrs_stability"), state.get("fsrs_difficulty"),
+                 state.get("last_review_at"), flashcard_id),
             )
             row = cur.fetchone()
             return self._flashcard_row(row) if row else None

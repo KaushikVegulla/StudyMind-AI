@@ -6,11 +6,11 @@ export async function getWorkspaces() {
   return r.json();
 }
 
-export async function askQuestion(question, workspaceId, style = "standard") {
+export async function askQuestion(question, workspaceId, style = "standard", hyde = false) {
   const r = await fetch(`${API}/api/chat/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, workspace_id: workspaceId, style }),
+    body: JSON.stringify({ question, workspace_id: workspaceId, style, hyde }),
   });
   return r.json();
 }

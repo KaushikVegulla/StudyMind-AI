@@ -73,21 +73,38 @@ class MemoryRepository:
 
     # -- documents and chunks ----------------------------------------------
     def create_document(self, workspace_id: str, filename: str, pages: int,
-                        chunks: list[dict]) -> dict:
+                        chunks: list[dict], extractor: str = "pypdf",
+                        pages_needing_ocr: int = 0) -> dict:
         doc_id = self._next_id("doc")
-        for chunk in chunks:
+        # Two passes: parents first so child chunks can be linked to
+        # the parent id assigned here (parent-child retrieval).
+        ref_to_id: dict[str, str] = {}
+        ordered = sorted(chunks, key=lambda c: bool(c.get("parent_ref")))
+        for chunk in ordered:
             cid = self._next_id("chunk")
+            if chunk.get("ref"):
+                ref_to_id[chunk["ref"]] = cid
+            parent_id = None
+            if chunk.get("parent_ref"):
+                parent_id = ref_to_id.get(chunk["parent_ref"])
             self.chunks[cid] = {
                 "id": cid, "document_id": doc_id, "workspace_id": workspace_id,
                 "filename": filename, "page": chunk["page"],
                 "index": chunk["index"], "text": chunk["text"],
                 "section": chunk.get("section", ""),
                 "embedding": chunk.get("embedding"),
+                "parent_id": parent_id,
             }
         doc = {"id": doc_id, "workspace_id": workspace_id, "filename": filename,
-               "pages": pages, "chunk_count": len(chunks)}
+               "pages": pages, "chunk_count": len(chunks),
+               "extractor": extractor,
+               "pages_needing_ocr": pages_needing_ocr}
         self.documents[doc_id] = doc
         return doc
+
+    def get_chunk(self, chunk_id: str) -> dict | None:
+        chunk = self.chunks.get(chunk_id)
+        return dict(chunk) if chunk else None
 
     def list_documents(self, workspace_id: str | None = None) -> list[dict]:
         docs = list(self.documents.values())
@@ -135,7 +152,7 @@ class MemoryRepository:
     def save_flashcards(self, workspace_id: str,
                         document_id: str | None,
                         cards: list[dict]) -> list[dict]:
-        from ..services.srs import new_card_state
+        from ..services.scheduling import new_card_state
 
         saved = []
         for card in cards:
@@ -171,7 +188,9 @@ class MemoryRepository:
         if card is None:
             return None
         card.update({k: state[k] for k in
-                     ("ease_factor", "interval_days", "repetitions", "due_at")})
+                     ("ease_factor", "interval_days", "repetitions",
+                      "due_at", "fsrs_stability", "fsrs_difficulty",
+                      "last_review_at") if k in state})
         return dict(card)
 
     # -- generation cache --------------------------------------------------

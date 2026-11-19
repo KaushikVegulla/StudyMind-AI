@@ -11,6 +11,16 @@ Batch 1 rules (from the 2026-11-19 research report):
   context path ``Subject > Document > Section`` to the chunk text. The
   stored ``text`` stays the original wording, so citations quote the
   notes exactly as written.
+
+Parent-child retrieval adds one more level: every parent chunk (the
+page/section chunk above) also gets smaller ``child`` chunks of about
+200 characters, built by :func:`child_chunks_for`. Retrieval matches
+the children — small, focused passages rank more precisely — while
+the prompt receives the parent chunk's full text as context, so the
+answer still sees the whole passage. Citations keep pointing at the
+child's document, page and section. Children carry ``parent_ref``
+(the parent's ``ref``) so repositories can link them to the parent
+row they create in the same ingest call.
 """
 from __future__ import annotations
 
@@ -90,5 +100,72 @@ def chunk_page_text(text: str, page: int, chunk_size: int = 800,
             "text": piece,
             "section": section,
             "embedding_text": embedding_text,
+            "ref": f"p{page}-{index}",
+            "parent_ref": None,
         })
     return chunks
+
+
+CHILD_CHUNK_SIZE = 200
+
+
+def child_chunks_for(parent: dict, size: int = CHILD_CHUNK_SIZE) -> list[dict]:
+    """Split one parent chunk into small child chunks for retrieval.
+
+    Children inherit the parent's page, index and section (they live
+    at the same place in the document) and carry ``parent_ref`` so the
+    repository can store the link. A parent whose text already fits in
+    one child still gets exactly one child, so every parent is
+    reachable through the child index. Sentence boundaries are kept
+    where possible, reusing the parent splitter.
+    """
+    text = " ".join((parent.get("text") or "").split())
+    if not text:
+        return []
+    pieces: list[str] = []
+    current = ""
+    for sentence in _split_sentences(text):
+        if len(sentence) > size:
+            if current:
+                pieces.append(current)
+                current = ""
+            start = 0
+            while start < len(sentence):
+                pieces.append(sentence[start:start + size])
+                start += size
+            continue
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if len(candidate) <= size:
+            current = candidate
+        else:
+            pieces.append(current)
+            current = sentence
+    if current:
+        pieces.append(current)
+
+    context_path = ""
+    embedding_text = parent.get("embedding_text") or ""
+    if "\n" in embedding_text:
+        context_path = embedding_text.rsplit("\n", 1)[0]
+    children: list[dict] = []
+    for child_index, piece in enumerate(pieces):
+        children.append({
+            "page": parent["page"],
+            "index": parent["index"],
+            "child_index": child_index,
+            "text": piece,
+            "section": parent.get("section", ""),
+            "embedding_text": f"{context_path}\n{piece}" if context_path
+                              else piece,
+            "ref": f"{parent['ref']}-c{child_index}",
+            "parent_ref": parent["ref"],
+        })
+    return children
+
+
+def with_children(parents: list[dict]) -> list[dict]:
+    """Parents followed by their children, ready for one ingest call."""
+    combined = list(parents)
+    for parent in parents:
+        combined.extend(child_chunks_for(parent))
+    return combined

@@ -199,7 +199,11 @@ def test_quiz_falls_back_to_scaffold_when_always_invalid(monkeypatch):
 
 # -- flashcard review queue -----------------------------------------------------
 
-def test_flashcard_review_flow():
+def test_flashcard_review_flow(monkeypatch):
+    # This flow asserts SM-2 scheduling semantics through the API, so
+    # pin the SM-2 engine: the default engine is FSRS (services/
+    # scheduling.py), whose first-review intervals differ by design.
+    monkeypatch.setenv("SRS_ENGINE", "sm2")
     _repo, ws, _doc = _workspace_with_doc()
     body = client.post("/api/generate/flashcards",
                        json={"workspace_id": ws["id"], "count": 2}).json()

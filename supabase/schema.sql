@@ -18,8 +18,14 @@ create table if not exists documents (
   workspace_id uuid not null references workspaces(id) on delete cascade,
   filename text not null,
   pages int not null default 0,
+  extractor text not null default 'pypdf',
+  pages_needing_ocr int not null default 0,
   created_at timestamptz default now()
 );
+
+-- For projects created before the extractor columns existed.
+alter table documents add column if not exists extractor text default 'pypdf';
+alter table documents add column if not exists pages_needing_ocr int default 0;
 
 create table if not exists chunks (
   id uuid primary key default gen_random_uuid(),
@@ -35,6 +41,12 @@ create table if not exists chunks (
 
 -- For projects created before the section column existed.
 alter table chunks add column if not exists section text default '';
+
+-- Parent-child retrieval: a chunk with parent_id set is a small child
+-- chunk; retrieval matches children and answers from the parent's text.
+alter table chunks add column if not exists parent_id uuid
+  references chunks(id) on delete cascade;
+create index if not exists chunks_parent_idx on chunks(parent_id);
 
 -- HNSW over IVFFlat: better recall at this scale, no training step.
 drop index if exists chunks_embedding_idx;
@@ -87,6 +99,15 @@ create table if not exists flashcards (
 );
 create index if not exists flashcards_due_idx
   on flashcards(workspace_id, due_at);
+
+-- FSRS scheduling state (backend services/fsrs.py). The review engine
+-- is chosen by the SRS_ENGINE env var (fsrs by default, sm2 keeps the
+-- columns above). FSRS fields stay null until a card is reviewed under
+-- the FSRS engine; last_review_at feeds its retrievability estimate
+-- and is maintained by both engines.
+alter table flashcards add column if not exists fsrs_stability double precision;
+alter table flashcards add column if not exists fsrs_difficulty double precision;
+alter table flashcards add column if not exists last_review_at timestamptz;
 
 -- Vector search: nearest chunks to a question embedding, cosine distance.
 -- The backend inlines the same ORDER BY in its repository queries; this
