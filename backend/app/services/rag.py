@@ -166,7 +166,22 @@ def citation_for(chunk: dict) -> dict:
     }
 
 
-def build_prompt(question: str, chunks: list[dict]) -> str:
+ANSWER_STYLES = ("concise", "standard", "exam")
+
+_STYLE_INSTRUCTIONS = {
+    "concise": "Style: concise. Answer directly in at most three short "
+               "sentences. No preamble, no restating the question.",
+    "standard": "",
+    "exam": "Style: exam. Structure the answer for marks: start with a "
+            "one-line definition, then the key points as a short list, "
+            "then one example or application if the sources give one.",
+}
+
+
+def build_prompt(question: str, chunks: list[dict],
+                 style: str = "standard") -> str:
+    if style not in _STYLE_INSTRUCTIONS:
+        style = "standard"
     chunks = assign_source_ids(chunks)
     sep = chr(10) + chr(10)
     context = sep.join(
@@ -176,6 +191,7 @@ def build_prompt(question: str, chunks: list[dict]) -> str:
         + f": {c['text']}"
         for c in chunks
     )
+    style_line = _STYLE_INSTRUCTIONS[style]
     return (
         "Answer the question using ONLY the sources below. "
         "Cite every claim with its source label, like [S1]. "
@@ -183,6 +199,7 @@ def build_prompt(question: str, chunks: list[dict]) -> str:
         "page number or source label that is not in the list. "
         "If the sources do not contain the answer, say exactly: "
         "I could not find this in your uploaded material."
+        + (sep + style_line if style_line else "")
         + sep + "Sources:" + chr(10) + context
         + sep + f"Question: {question}"
     )
